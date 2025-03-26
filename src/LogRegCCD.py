@@ -241,23 +241,50 @@ class LogRegCCD:
         """
         Plot the coefficient values as a function of lambda.
         """
-        for i, lambda_val in enumerate(self.lambda_vals):
-            plt.plot(range(len(self.coefficients[i][-1])), self.coefficients[i][-1], marker='o',
-                     label=f'Lambda={lambda_val}')
-        plt.xlabel("Coefficient Index")
-        plt.ylabel("Coefficient Values")
-        plt.title("Coefficient values vs. Lambda")
-        plt.legend()
+        plt.figure(figsize=(12, 6))
+        coef_matrix = np.column_stack([
+            self.results["intercept"].values,  # Intercept as first column
+            np.vstack(self.results["beta"].values)  # Feature coefficients
+        ])
+        n_coeffs = coef_matrix.shape[1]
+        labels = ["Intercept"] + [f"β{j}" for j in range(1, n_coeffs)]
+
+        # Plot each coefficient path
+        for j in range(n_coeffs):
+            plt.plot(self.lambda_vals, coef_matrix[:, j], marker='o', linestyle='-', label=labels[j])
+
+        # Formatting
+        plt.xscale("log")  # Log scale for lambda
+        plt.xlabel("Lambda (log scale)")
+        plt.ylabel("Coefficient values")
+        plt.title("Coefficients for Different Lambda Values")
+        plt.axhline(0, color="black", linestyle="--", linewidth=1)  # Zero line
+        plt.legend(loc="upper left", bbox_to_anchor=(1.02, 1), fontsize=8, title="Coefficients")
+        plt.grid(True, which="both", linestyle="--", linewidth=0.5)
+        plt.tight_layout(rect=[0, 0, 0.75, 1])
+
+        # Show the plot
         plt.show()
 
     def plot_likelihoods(self):
         """
         Plot likelihood function values depending on iteration.
         """
-        for i, lambda_val in enumerate(self.lambda_vals):
-            plt.plot(range(len(self.likelihoods[i])), self.likelihoods[i], marker='o', label=f'Lambda={lambda_val}')
+        plt.figure(figsize=(12, 6))
+        for i, row in self.results.iterrows():
+            lambd = row["lambda"]
+            likelihoods = row["log_likelihoods"]
+            plt.plot(range(1, len(likelihoods) + 1), likelihoods, marker='o', linestyle='-', label=f"λ={lambd}")
+
+        # Formatting
         plt.xlabel("Iteration")
         plt.ylabel("Log-Likelihood")
-        plt.title("Likelihood Function Values over Iterations")
-        plt.legend()
+        plt.title("Log-Likelihood Convergence for Different Lambda Values")
+        plt.legend(loc="upper left", bbox_to_anchor=(1.02, 1), fontsize=8, title="Lambda")
+        plt.grid(True, linestyle="--", linewidth=0.5)
+
+        # Adjust layout to fit legend outside
+        plt.tight_layout(rect=[0, 0, 0.75, 1])
+
+        # Show the plot
         plt.show()
