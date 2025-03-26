@@ -8,6 +8,9 @@ class LogRegCCD:
     """
     Logistic regression model using Cyclic Coordinate Descent (CCD) for L1-regularization.
     """
+
+    measures = ["roc_auc", "precision", "recall", "f1", "balanced_accuracy"]
+
     def __init__(self, lambda_vals=None, max_iter: int = 100, stop_tol: float = 1e-5):
         """
         Initialize the CCD-based logistic regression model.
@@ -34,7 +37,7 @@ class LogRegCCD:
         :param z: Input to the sigmoid function.
         :return: Computed sigmoid value.
         """
-        return 1 / (1 + np.exp(-z))
+        return np.where(z >= 0, 1 / (1 + np.exp(-z)), np.exp(z) / (1 + np.exp(z)))
 
     @staticmethod
     def soft_threshold(rho: float, lambda_val: float) -> float:
@@ -64,8 +67,7 @@ class LogRegCCD:
         :return: Log-likelihood value.
         """
         z = intercept + X @ beta
-        log_likelihood = np.sum(y * z - np.log(1 + np.exp(z)))
-        return log_likelihood
+        return np.sum(y * z - np.log1p(np.exp(-np.abs(z))) - np.maximum(z, 0))
 
     def fit(self, X: pd.DataFrame, y: pd.DataFrame) -> None:
         """
@@ -128,7 +130,10 @@ class LogRegCCD:
                 residual = r_j - X[:, j] * beta[j]
 
             # Update intercept (not penalized)
-            intercept = np.sum(W * (z_working - X @ beta)) / np.sum(W)
+            denominator = np.sum(W)
+            if np.abs(denominator) < 1e-10:  # Prevent division by near-zero
+                denominator = 1e-10
+            intercept = np.sum(W * (z_working - X @ beta)) / denominator
 
             # Compute log-likelihood (without L1 penalty)
             log_likelihood = self.compute_log_likelihood(X, y, beta, intercept)
@@ -208,13 +213,15 @@ class LogRegCCD:
         else:
             raise ValueError("Invalid evaluation measure.")
 
-    def validate(self, X_valid: pd.DataFrame, y_valid: pd.DataFrame, measure: str = "precision") -> None:
+    def validate(self, X_valid: pd.DataFrame, y_valid: pd.DataFrame, measure: str = "precision",
+                 find_best: bool = True) -> None:
         """
         Validate the model using the given evaluation measure.
 
         :param X_valid: Validation feature matrix.
         :param y_valid: Validation labels.
         :param measure: Evaluation measure ("roc_auc", "precision", "recall", "f1", "balanced_accuracy").
+        :param find_best: Find the best lambda based on the evaluation measure.
         :return: Computed evaluation score.
         """
         probs = self.predict_proba(X_valid)
@@ -223,24 +230,28 @@ class LogRegCCD:
         self.results[measure] = scores  # Store the measure in the results DataFrame
 
         # Find the best lambda based on the evaluation measure
-        best_idx = np.argmax(scores)
-        best_result = self.results.iloc[best_idx]
-        self.best_lambda = best_result["lambda"]
-        self.best_beta = best_result["beta"]
-        self.best_intercept = best_result["intercept"]
-        print(f"Best lambda: {self.best_lambda}\n"
-              f"Best {measure}: {scores[best_idx]}\n"
-              f"Best coefficients: {self.best_beta}\n"
-              f"Best intercept: {self.best_intercept}")
+        if find_best:
+            best_idx = np.argmax(scores)
+            best_result = self.results.iloc[best_idx]
+            self.best_lambda = best_result["lambda"]
+            self.best_beta = best_result["beta"]
+            self.best_intercept = best_result["intercept"]
+            print(f"Best lambda: {self.best_lambda}\n"
+                  f"Best {measure}: {scores[best_idx]}\n"
+                  f"Best coefficients: {self.best_beta}\n"
+                  f"Best intercept: {self.best_intercept}")
 
     def plot_score(self, measure: str, save_path: str = None) -> None:
         """
         Plot how the evaluation measure changes with lambda.
 
-        :param measure: Evaluation measure to plot.
+        :param measure: Evaluation measure to plot ("roc_auc", "precision", "recall", "f1", "balanced_accuracy").
         :param save_path: Path to save the plot.
         """
-        scores = self.results[measure].values
+        try:
+            scores = self.results[measure].values
+        except KeyError:
+            raise ValueError("Validate the model first to compute the evaluation measure.")
 
         # Plot the measure against lambda (log scale for lambda)
         plt.plot(self.lambda_vals, scores, marker='o', linestyle='-', label=measure, color='b')
@@ -250,8 +261,39 @@ class LogRegCCD:
         plt.xlabel("Lambda (log scale)")
         plt.ylabel(measure.capitalize())
         plt.title(f"{measure.capitalize()} vs. Lambda")
-        plt.legend()
         plt.grid(True, which="both", linestyle="--", linewidth=0.5)
+
+        # Show the plot
+        plt.show()
+
+        if save_path:
+            plt.savefig(save_path)
+
+    def validate_and_plot_all(self, X_valid: pd.DataFrame, y_valid: pd.DataFrame, save_path: str = None) -> None:
+        """
+        Validate the model using all evaluation measures and plot the results.
+
+        :param X_valid: Validation feature matrix.
+        :param y_valid: Validation labels.
+        :param save_path: Path to save the plot.
+        """
+        for measure in LogRegCCD.measures:
+            self.validate(X_valid, y_valid, measure, find_best=False)
+
+        # Plot the evaluation measures against lambda
+        plt.figure(figsize=(12, 6))
+        for measure in LogRegCCD.measures:
+            scores = self.results[measure].values
+            plt.plot(self.lambda_vals, scores, marker='o', linestyle='-', label=measure)
+
+        # Formatting
+        plt.xscale("log")  # Log scale for lambda
+        plt.xlabel("Lambda (log scale)")
+        plt.ylabel("Evaluation Measure")
+        plt.title("Evaluation Measures vs. Lambda")
+        plt.legend(loc="upper left", bbox_to_anchor=(1.02, 1), fontsize=8, title="Measure")
+        plt.grid(True, which="both", linestyle="--", linewidth=0.5)
+        plt.tight_layout(rect=[0, 0, 0.75, 1])
 
         # Show the plot
         plt.show()

@@ -13,7 +13,7 @@ def read_diabetes_dataset(filepath: str) -> tuple:
     return X, y
 
 
-def read_habermand_dataset(filepath: str) -> tuple:
+def read_haberman_dataset(filepath: str) -> tuple:
     """
     Read the Haberman's Survival dataset from the given filepath
     :param filepath: The path to the CSV file containing the dataset.
@@ -21,6 +21,7 @@ def read_habermand_dataset(filepath: str) -> tuple:
     """
     df = pd.read_csv(filepath, header=None)
     y = df.iloc[:, -1]
+    y = y.map({1: 1, 2: 0})  # Encoding the target variable with 0 and 1
     X = df.drop(df.columns[-1], axis=1)
     return X, y
 
@@ -35,6 +36,7 @@ def read_wdbc_dataset(filepath: str, drop_correlated: bool = False) -> tuple:
     df = pd.read_csv(filepath, header=None)
     y = df.iloc[:, 1]
     X = df.drop(columns=[0, 1])
+    y = y.map({'M': 1, 'B': 0})  # Encoding the target variable with 0 and 1
 
     if drop_correlated:
         corr_wdbc = X.corr().abs()
