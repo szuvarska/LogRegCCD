@@ -1,33 +1,36 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import pandas as pd
 from sklearn.metrics import roc_auc_score, precision_recall_fscore_support, balanced_accuracy_score
 
 
 class LogRegCCD:
-    def __init__(self, lambda_val: float, max_iter: int = 100, stop_tol: float = 1e-5):
+    def __init__(self, lambda_vals=None, max_iter: int = 100, stop_tol: float = 1e-5):
         """
         Initialize the CCD-based logistic regression model.
 
         """
-        self.lambda_val = lambda_val
+        if lambda_vals is None:
+            lambda_vals = [0.0, 0.1, 1.0, 10.0]
+        self.lambda_vals = lambda_vals
         self.max_iter = max_iter
         self.stop_tol = stop_tol
-        self.beta = None
-        self.intercept = None
-        self.coefficients = []
-        self.likelihoods = []
         self.mse_values = []
         self.accuracy_values = []
+        self.best_lambda = None
+        self.best_beta = None
+        self.best_intercept = None
+        self.results = None
 
     def sigmoid(self, z):
         """Compute the sigmoid function."""
         return 1 / (1 + np.exp(-z))
 
-    def soft_threshold(self, rho):
-        if rho < -self.lambda_val:
-            return rho + self.lambda_val
-        elif rho > self.lambda_val:
-            return rho - self.lambda_val
+    def soft_threshold(self, rho: float, lambda_val: float):
+        if rho < -lambda_val:
+            return rho + lambda_val
+        elif rho > lambda_val:
+            return rho - lambda_val
         else:
             return 0.0
 
@@ -58,17 +61,31 @@ class LogRegCCD:
         y_pred = (self.sigmoid(X @ beta) >= 0.5).astype(int)
         return np.mean(y_pred == y)
 
-    def fit(self, X, y):
+    def fit(self, X: pd.DataFrame, y: pd.DataFrame):
         """
-        Fit the logistic regression model using Cyclic Coordinate Descent (CCD).
+        Fit the logistic regression model using Cyclic Coordinate Descent (CCD) for all lambda values.
+        """
+        results = []
+        for lambda_val in self.lambda_vals:
+            results_dict = self.fit_lambda(X, y, lambda_val)
+            results.append(results_dict)
+        self.results = pd.DataFrame(results)
+
+    def fit_lambda(self, X: pd.DataFrame, y: pd.DataFrame, lambda_val: float) -> dict:
+        """
+        Fit the logistic regression model using Cyclic Coordinate Descent (CCD) for given lambda value.
         """
         n_samples, n_features = X.shape
-        self.beta = np.zeros(n_features)
-        self.intercept = 0.0
+        beta = np.zeros(n_features)
+        intercept = 0.0
+        log_likelihoods = []
+        betas = []
+        intercepts = []
+        converged_iter = 0
 
         for iteration in range(self.max_iter):
             # Compute linear predictor and probabilities
-            z = self.intercept + X @ self.beta
+            z = intercept + X @ beta
             p = self.sigmoid(z)
 
             # IRLS weights and working response
@@ -76,77 +93,104 @@ class LogRegCCD:
             z_working = z + (y - p) / np.maximum(W, 1e-5)  # Avoid divide-by-zero
 
             # Precompute weighted residuals
-            residual = z_working - self.intercept - X @ self.beta
+            residual = z_working - intercept - X @ beta
 
-            beta_old = self.beta.copy()
+            beta_old = beta.copy()
 
             # Coordinate-wise updates
             for j in range(n_features):
                 # Compute the partial residual
-                r_j = residual + X[:, j] * self.beta[j]
+                r_j = residual + X[:, j] * beta[j]
 
                 # Update rule based on weighted least squares
                 rho = np.dot(W * X[:, j], r_j)
                 z_j = np.dot(W * X[:, j], X[:, j])
 
                 if z_j != 0:
-                    self.beta[j] = self.soft_threshold(rho) / z_j
+                    beta[j] = self.soft_threshold(rho, lambda_val) / z_j
                 else:
-                    self.beta[j] = 0.0
+                    beta[j] = 0.0
 
                 # Update residual
-                residual = r_j - X[:, j] * self.beta[j]
+                residual = r_j - X[:, j] * beta[j]
 
             # Update intercept (not penalized)
-            self.intercept = np.sum(W * (z_working - X @ self.beta)) / np.sum(W)
+            intercept = np.sum(W * (z_working - X @ beta)) / np.sum(W)
 
             # Compute log-likelihood (without L1 penalty)
-            log_likelihood = self.compute_log_likelihood(X, y, self.beta, self.intercept)
+            log_likelihood = self.compute_log_likelihood(X, y, beta, intercept)
 
             # Print log-likelihood and coefficients
             print(f"Iteration {iteration + 1}")
             print(f"Log-Likelihood: {log_likelihood:.6f}")
-            print(f"Intercept: {self.intercept:.6f}")
-            print(f"Coefficients: {self.beta}\n")
+            print(f"Intercept: {intercept:.6f}")
+            print(f"Coefficients: {beta}\n")
+            log_likelihoods.append(log_likelihood)
+            betas.append(beta.copy())
+            intercepts.append(intercept)
 
             # Convergence check
-            if np.linalg.norm(self.beta - beta_old, ord=1) < self.stop_tol:
+            if np.linalg.norm(beta - beta_old, ord=1) < self.stop_tol:
                 print(f'Converged at iteration {iteration}')
+                converged_iter = iteration
                 break
 
-        # for iteration in range(self.max_iter):  # Max iterations
-        #     # Compute linear predictor and probabilities
-        #     z = intercept + X @ beta
-        #     p = self.sigmoid(z)
-        #     for j in range(p + 1):
-        #         residual = y_train - self.sigmoid(X @ beta)
-        #         rho_j = np.dot(X[:, j], residual)  # Partial residual sum
-        #         if j == 0:  # Intercept update
-        #             beta[j] += rho_j / n
-        #         else:
-        #             beta_j_new = np.sign(rho_j) * max(abs(rho_j) - lambda_val, 0) / n
-        #             beta[j] = beta_j_new
-        #     likelihood = self.compute_likelihood(X, y_train, beta)
-        #     mse = self.compute_mse(X, y_train, beta)
-        #     accuracy = self.compute_accuracy(X, y_train, beta)
-        #     print(f"Iteration {iteration + 1}: Likelihood={likelihood:.4f}, MSE={mse:.4f}, Accuracy={accuracy:.4f}")
-        #     likelihoods_per_lambda.append(likelihood)
-        #     coefficients_per_lambda.append(beta.copy())
-        #     if iteration > 1 and abs(likelihoods_per_lambda[-1] - likelihood) < self.stop_tol:
-        #         break
+        results = {
+            "lambda": lambda_val,
+            "betas": betas,
+            "intercepts": intercepts,
+            "log_likelihoods": log_likelihoods,
+            "beta": beta,
+            "intercept": intercept,
+            "converged_iter": converged_iter
+        }
+        return results
 
-    def predict_proba(self, X):
+    def predict_proba_best(self, X_test):
         """
         Predict probability estimates.
 
         :param X_test: Test feature matrix.
         :return: Predicted probabilities.
         """
-        z = self.intercept + X @ self.beta
+        z = self.best_intercept + X_test @ self.best_beta
         probs = self.sigmoid(z)
         return probs
 
-    def validate(self, X_valid, y_valid, measure="roc_auc"):
+    def predict_proba(self, X_test):
+        # Extract all intercepts and coefficients into NumPy arrays
+        intercepts = self.results["intercept"].values
+        betas = np.stack(self.results["beta"].values)  # Shape: (n_lambdas, n_features)
+
+        # Compute probabilities
+        z = intercepts + X_test @ betas.T  # Shape: (n_samples, n_lambdas)
+        probs = self.sigmoid(z)  # Apply sigmoid
+        return probs
+
+    @staticmethod
+    def calculate_measure_value(y_test, y_pred_proba, measure):
+        """
+        Calculate the evaluation measure for the given test data.
+
+        :param y_test: Test labels.
+        :param y_pred_proba: Predicted probabilities.
+        :param measure: Evaluation metric ("roc_auc", "precision", "recall", "f1", "balanced_accuracy").
+        :return: Computed evaluation score.
+        """
+        y_pred = (y_pred_proba >= 0.5).astype(int)
+
+        if measure == "roc_auc":
+            return roc_auc_score(y_test, y_pred_proba)
+        elif measure in ["precision", "recall", "f1"]:
+            precision, recall, f1, _ = precision_recall_fscore_support(y_test, y_pred, average="binary",
+                                                                       zero_division=1.0)
+            return locals()[measure]
+        elif measure == "balanced_accuracy":
+            return balanced_accuracy_score(y_test, y_pred)
+        else:
+            raise ValueError("Invalid evaluation measure.")
+
+    def validate(self, X_valid, y_valid, measure="precision"):
         """
         Validate the model using the given evaluation measure.
 
@@ -155,18 +199,21 @@ class LogRegCCD:
         :param measure: Evaluation metric ("roc_auc", "precision", "recall", "f1", "balanced_accuracy").
         :return: Computed evaluation score.
         """
-        y_pred_proba = self.predict_proba(X_valid)
-        y_pred = (y_pred_proba >= 0.5).astype(int)
+        probs = self.predict_proba(X_valid)
+        # Compute the metric for all lambdas in a vectorized way
+        scores = [self.calculate_measure_value(y_valid, probs[:, i], measure) for i in range(len(self.lambda_vals))]
+        self.results[measure] = scores  # Store the metric in the results DataFrame
 
-        if measure == "roc_auc":
-            return roc_auc_score(y_valid, y_pred_proba)
-        elif measure in ["precision", "recall", "f1"]:
-            precision, recall, f1, _ = precision_recall_fscore_support(y_valid, y_pred, average="binary")
-            return locals()[measure]
-        elif measure == "balanced_accuracy":
-            return balanced_accuracy_score(y_valid, y_pred)
-        else:
-            raise ValueError("Invalid evaluation measure.")
+        # Find the best lambda based on the evaluation measure
+        best_idx = np.argmax(scores)
+        best_result = self.results.iloc[best_idx]
+        self.best_lambda = best_result["lambda"]
+        self.best_beta = best_result["beta"]
+        self.best_intercept = best_result["intercept"]
+        print(f"Best lambda: {self.best_lambda}\n"
+              f"Best {measure}: {scores[best_idx]}\n"
+              f"Best coefficients: {self.best_beta}\n"
+              f"Best intercept: {self.best_intercept}")
 
     def plot_score(self, measure):
         """
