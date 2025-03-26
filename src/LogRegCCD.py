@@ -1,7 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
-from sklearn.metrics import roc_auc_score, precision_recall_fscore_support, balanced_accuracy_score
+from sklearn.metrics import roc_auc_score, average_precision_score, precision_recall_fscore_support, \
+    balanced_accuracy_score
 
 
 class LogRegCCD:
@@ -9,7 +10,14 @@ class LogRegCCD:
     Logistic regression model using Cyclic Coordinate Descent (CCD) for L1-regularization.
     """
 
-    measures = ["roc_auc", "precision", "recall", "f1", "balanced_accuracy"]
+    measures = {
+        "roc_auc": "ROC AUC",
+        "pr_auc": "PR AUC",
+        "precision": "Precision",
+        "recall": "Recall",
+        "f1": "F1 Score",
+        "balanced_accuracy": "Balanced Accuracy"
+    }
 
     def __init__(self, lambda_vals=None, max_iter: int = 100, stop_tol: float = 1e-5):
         """
@@ -56,7 +64,7 @@ class LogRegCCD:
             return 0.0
 
     @staticmethod
-    def compute_log_likelihood(X: pd.DataFrame, y: pd.DataFrame, beta: list[float], intercept: float) -> float:
+    def compute_log_likelihood(X: pd.DataFrame, y: pd.DataFrame, beta: np.ndarray, intercept: float) -> float:
         """
         Compute the log-likelihood of the logistic regression model.
 
@@ -197,13 +205,15 @@ class LogRegCCD:
 
         :param y_test: Test labels.
         :param y_pred_proba: Predicted probabilities.
-        :param measure: Evaluation measure ("roc_auc", "precision", "recall", "f1", "balanced_accuracy").
+        :param measure: Evaluation measure ("roc_auc", "pr_auc", "precision", "recall", "f1", "balanced_accuracy").
         :return: Computed evaluation score.
         """
         y_pred = (y_pred_proba >= 0.5).astype(int)
 
         if measure == "roc_auc":
             return roc_auc_score(y_test, y_pred_proba)
+        elif measure == "pr_auc":
+            return average_precision_score(y_test, y_pred_proba)  # PR-AUC (Precision-Recall AUC)
         elif measure in ["precision", "recall", "f1"]:
             precision, recall, f1, _ = precision_recall_fscore_support(y_test, y_pred, average="binary",
                                                                        zero_division=1.0)
@@ -220,7 +230,7 @@ class LogRegCCD:
 
         :param X_valid: Validation feature matrix.
         :param y_valid: Validation labels.
-        :param measure: Evaluation measure ("roc_auc", "precision", "recall", "f1", "balanced_accuracy").
+        :param measure: Evaluation measure ("roc_auc", "pr_auc", "precision", "recall", "f1", "balanced_accuracy").
         :param find_best: Find the best lambda based on the evaluation measure.
         :return: Computed evaluation score.
         """
@@ -245,7 +255,8 @@ class LogRegCCD:
         """
         Plot how the evaluation measure changes with lambda.
 
-        :param measure: Evaluation measure to plot ("roc_auc", "precision", "recall", "f1", "balanced_accuracy").
+        :param measure: Evaluation measure to plot ("roc_auc", "pr_auc", "precision", "recall", "f1",
+        "balanced_accuracy").
         :param save_path: Path to save the plot.
         """
         try:
@@ -277,14 +288,14 @@ class LogRegCCD:
         :param y_valid: Validation labels.
         :param save_path: Path to save the plot.
         """
-        for measure in LogRegCCD.measures:
+        for measure in LogRegCCD.measures.keys():
             self.validate(X_valid, y_valid, measure, find_best=False)
 
         # Plot the evaluation measures against lambda
         plt.figure(figsize=(12, 6))
-        for measure in LogRegCCD.measures:
+        for measure in LogRegCCD.measures.keys():
             scores = self.results[measure].values
-            plt.plot(self.lambda_vals, scores, marker='o', linestyle='-', label=measure)
+            plt.plot(self.lambda_vals, scores, marker='o', linestyle='-', label=LogRegCCD.measures[measure])
 
         # Formatting
         plt.xscale("log")  # Log scale for lambda
@@ -293,7 +304,7 @@ class LogRegCCD:
         plt.title("Evaluation Measures vs. Lambda")
         plt.legend(loc="upper left", bbox_to_anchor=(1.02, 1), fontsize=8, title="Measure")
         plt.grid(True, which="both", linestyle="--", linewidth=0.5)
-        plt.tight_layout(rect=[0, 0, 0.75, 1])
+        plt.tight_layout(rect=(0, 0, 0.75, 1))
 
         # Show the plot
         plt.show()
@@ -327,7 +338,7 @@ class LogRegCCD:
         plt.axhline(0, color="black", linestyle="--", linewidth=1)  # Zero line
         plt.legend(loc="upper left", bbox_to_anchor=(1.02, 1), fontsize=8, title="Coefficients")
         plt.grid(True, which="both", linestyle="--", linewidth=0.5)
-        plt.tight_layout(rect=[0, 0, 0.75, 1])
+        plt.tight_layout(rect=(0, 0, 0.75, 1))
 
         # Show the plot
         plt.show()
@@ -355,7 +366,7 @@ class LogRegCCD:
         plt.grid(True, linestyle="--", linewidth=0.5)
 
         # Adjust layout to fit legend outside
-        plt.tight_layout(rect=[0, 0, 0.75, 1])
+        plt.tight_layout(rect=(0, 0, 0.75, 1))
 
         # Show the plot
         plt.show()
