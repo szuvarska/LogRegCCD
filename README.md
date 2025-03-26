@@ -1,1 +1,1 @@
-# LogRegCCD
+#  Cyclic Coordinate Descent for Regularized Logistic Regression
