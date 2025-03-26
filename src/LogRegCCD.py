@@ -5,28 +5,46 @@ from sklearn.metrics import roc_auc_score, precision_recall_fscore_support, bala
 
 
 class LogRegCCD:
+    """
+    Logistic regression model using Cyclic Coordinate Descent (CCD) for L1-regularization.
+    """
     def __init__(self, lambda_vals=None, max_iter: int = 100, stop_tol: float = 1e-5):
         """
         Initialize the CCD-based logistic regression model.
 
+        :param lambda_vals: List of lambda values for regularization.
+        :param max_iter: Maximum number of iterations.
+        :param stop_tol: Convergence criterion based on the L1-norm of the coefficient vector.
         """
         if lambda_vals is None:
             lambda_vals = [0.0, 0.1, 1.0, 10.0]
         self.lambda_vals = lambda_vals
         self.max_iter = max_iter
         self.stop_tol = stop_tol
-        self.mse_values = []
-        self.accuracy_values = []
         self.best_lambda = None
         self.best_beta = None
         self.best_intercept = None
         self.results = None
 
-    def sigmoid(self, z):
-        """Compute the sigmoid function."""
+    @staticmethod
+    def sigmoid(z: np.ndarray) -> np.ndarray:
+        """
+        Compute the sigmoid function.
+
+        :param z: Input to the sigmoid function.
+        :return: Computed sigmoid value.
+        """
         return 1 / (1 + np.exp(-z))
 
-    def soft_threshold(self, rho: float, lambda_val: float):
+    @staticmethod
+    def soft_threshold(rho: float, lambda_val: float) -> float:
+        """
+        Compute the soft-thresholding operator.
+
+        :param rho: The value to be thresholded.
+        :param lambda_val: Regularization strength.
+        :return: The thresholded value.
+        """
         if rho < -lambda_val:
             return rho + lambda_val
         elif rho > lambda_val:
@@ -34,36 +52,27 @@ class LogRegCCD:
         else:
             return 0.0
 
-    def compute_log_likelihood(self, X, y, beta, intercept):
+    @staticmethod
+    def compute_log_likelihood(X: pd.DataFrame, y: pd.DataFrame, beta: list[float], intercept: float) -> float:
         """
         Compute the log-likelihood of the logistic regression model.
 
         :param X: Feature matrix.
         :param y: Target vector.
         :param beta: Coefficients.
+        :param intercept: Intercept.
         :return: Log-likelihood value.
         """
         z = intercept + X @ beta
         log_likelihood = np.sum(y * z - np.log(1 + np.exp(z)))
         return log_likelihood
 
-    def compute_mse(self, X, y, beta):
-        """
-        Compute Mean Squared Error (MSE) for the given model parameters.
-        """
-        y_pred = self.sigmoid(X @ beta)
-        return np.mean((y - y_pred) ** 2)
-
-    def compute_accuracy(self, X, y, beta):
-        """
-        Compute accuracy for the given model parameters.
-        """
-        y_pred = (self.sigmoid(X @ beta) >= 0.5).astype(int)
-        return np.mean(y_pred == y)
-
-    def fit(self, X: pd.DataFrame, y: pd.DataFrame):
+    def fit(self, X: pd.DataFrame, y: pd.DataFrame) -> None:
         """
         Fit the logistic regression model using Cyclic Coordinate Descent (CCD) for all lambda values.
+
+        :param X: Feature matrix.
+        :param y: Target vector.
         """
         results = []
         for lambda_val in self.lambda_vals:
@@ -74,6 +83,10 @@ class LogRegCCD:
     def fit_lambda(self, X: pd.DataFrame, y: pd.DataFrame, lambda_val: float) -> dict:
         """
         Fit the logistic regression model using Cyclic Coordinate Descent (CCD) for given lambda value.
+
+        :param X: Feature matrix.
+        :param y: Target vector.
+        :param lambda_val: Regularization strength.
         """
         n_samples, n_features = X.shape
         beta = np.zeros(n_features)
@@ -146,7 +159,7 @@ class LogRegCCD:
         }
         return results
 
-    def predict_proba_best(self, X_test):
+    def predict_proba_best(self, X_test: pd.DataFrame) -> np.ndarray:
         """
         Predict probability estimates.
 
@@ -157,7 +170,12 @@ class LogRegCCD:
         probs = self.sigmoid(z)
         return probs
 
-    def predict_proba(self, X_test):
+    def predict_proba(self, X_test: pd.DataFrame) -> np.ndarray:
+        """
+        Predict probability estimates for all lambda values.
+        :param X_test: Test feature matrix.
+        :return: Predicted probabilities.
+        """
         # Extract all intercepts and coefficients into NumPy arrays
         intercepts = self.results["intercept"].values
         betas = np.stack(self.results["beta"].values)  # Shape: (n_lambdas, n_features)
@@ -168,7 +186,7 @@ class LogRegCCD:
         return probs
 
     @staticmethod
-    def calculate_measure_value(y_test, y_pred_proba, measure):
+    def calculate_measure_value(y_test: pd.DataFrame, y_pred_proba: np.ndarray, measure: str) -> float:
         """
         Calculate the evaluation measure for the given test data.
 
@@ -190,7 +208,7 @@ class LogRegCCD:
         else:
             raise ValueError("Invalid evaluation measure.")
 
-    def validate(self, X_valid, y_valid, measure="precision"):
+    def validate(self, X_valid: pd.DataFrame, y_valid: pd.DataFrame, measure: str = "precision") -> None:
         """
         Validate the model using the given evaluation measure.
 
@@ -215,11 +233,12 @@ class LogRegCCD:
               f"Best coefficients: {self.best_beta}\n"
               f"Best intercept: {self.best_intercept}")
 
-    def plot_score(self, measure):
+    def plot_score(self, measure: str, save_path: str = None) -> None:
         """
         Plot how the evaluation measure changes with lambda.
 
         :param measure: Evaluation measure to plot.
+        :param save_path: Path to save the plot.
         """
         scores = self.results[measure].values
 
@@ -237,9 +256,14 @@ class LogRegCCD:
         # Show the plot
         plt.show()
 
-    def plot_coeff(self):
+        if save_path:
+            plt.savefig(save_path)
+
+    def plot_coeff(self, save_path: str = None) -> None:
         """
         Plot the coefficient values as a function of lambda.
+
+        :param save_path: Path to save the plot.
         """
         plt.figure(figsize=(12, 6))
         coef_matrix = np.column_stack([
@@ -266,9 +290,14 @@ class LogRegCCD:
         # Show the plot
         plt.show()
 
-    def plot_likelihoods(self):
+        if save_path:
+            plt.savefig(save_path)
+
+    def plot_likelihoods(self, save_path: str = None) -> None:
         """
         Plot likelihood function values depending on iteration.
+
+        :param save_path: Path to save the plot.
         """
         plt.figure(figsize=(12, 6))
         for i, row in self.results.iterrows():
@@ -288,3 +317,6 @@ class LogRegCCD:
 
         # Show the plot
         plt.show()
+
+        if save_path:
+            plt.savefig(save_path)
