@@ -174,7 +174,7 @@ class LogRegCCD:
 
         :param y_test: Test labels.
         :param y_pred_proba: Predicted probabilities.
-        :param measure: Evaluation metric ("roc_auc", "precision", "recall", "f1", "balanced_accuracy").
+        :param measure: Evaluation measure ("roc_auc", "precision", "recall", "f1", "balanced_accuracy").
         :return: Computed evaluation score.
         """
         y_pred = (y_pred_proba >= 0.5).astype(int)
@@ -196,13 +196,13 @@ class LogRegCCD:
 
         :param X_valid: Validation feature matrix.
         :param y_valid: Validation labels.
-        :param measure: Evaluation metric ("roc_auc", "precision", "recall", "f1", "balanced_accuracy").
+        :param measure: Evaluation measure ("roc_auc", "precision", "recall", "f1", "balanced_accuracy").
         :return: Computed evaluation score.
         """
         probs = self.predict_proba(X_valid)
-        # Compute the metric for all lambdas in a vectorized way
+        # Compute the measure for all lambdas in a vectorized way
         scores = [self.calculate_measure_value(y_valid, probs[:, i], measure) for i in range(len(self.lambda_vals))]
-        self.results[measure] = scores  # Store the metric in the results DataFrame
+        self.results[measure] = scores  # Store the measure in the results DataFrame
 
         # Find the best lambda based on the evaluation measure
         best_idx = np.argmax(scores)
@@ -221,11 +221,20 @@ class LogRegCCD:
 
         :param measure: Evaluation measure to plot.
         """
-        scores = [self.validate(X_valid, y_valid, measure) for _ in self.lambda_vals]
-        plt.plot(self.lambda_vals, scores, marker='o')
-        plt.xlabel("Lambda")
-        plt.ylabel(measure)
-        plt.title(f"{measure} vs. Lambda")
+        scores = self.results[measure].values
+
+        # Plot the measure against lambda (log scale for lambda)
+        plt.plot(self.lambda_vals, scores, marker='o', linestyle='-', label=measure, color='b')
+
+        # Formatting
+        plt.xscale("log")  # Log scale for lambda
+        plt.xlabel("Lambda (log scale)")
+        plt.ylabel(measure.capitalize())
+        plt.title(f"{measure.capitalize()} vs. Lambda")
+        plt.legend()
+        plt.grid(True, which="both", linestyle="--", linewidth=0.5)
+
+        # Show the plot
         plt.show()
 
     def plot_coeff(self):
