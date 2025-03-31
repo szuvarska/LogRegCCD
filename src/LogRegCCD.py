@@ -90,7 +90,7 @@ class LogRegCCD:
             results.append(results_dict)
         self.results = pd.DataFrame(results)
 
-    def fit_lambda(self, X: pd.DataFrame, y: pd.DataFrame, lambda_val: float) -> dict:
+    def fit_lambda(self, X: pd.DataFrame, y: pd.DataFrame, lambda_val: float, verbose:bool = False) -> dict:
         """
         Fit the logistic regression model using Cyclic Coordinate Descent (CCD) for given lambda value.
 
@@ -147,17 +147,19 @@ class LogRegCCD:
             log_likelihood = self.compute_log_likelihood(X, y, beta, intercept)
 
             # Print log-likelihood and coefficients
-            print(f"Iteration {iteration + 1}")
-            print(f"Log-Likelihood: {log_likelihood:.6f}")
-            print(f"Intercept: {intercept:.6f}")
-            print(f"Coefficients: {beta}\n")
+            if verbose:
+                print(f"Iteration {iteration + 1}")
+                print(f"Log-Likelihood: {log_likelihood:.6f}")
+                print(f"Intercept: {intercept:.6f}")
+                print(f"Coefficients: {beta}\n")
             log_likelihoods.append(log_likelihood)
             betas.append(beta.copy())
             intercepts.append(intercept)
 
             # Convergence check
             if np.linalg.norm(beta - beta_old, ord=1) < self.stop_tol:
-                print(f'Converged at iteration {iteration}')
+                if verbose:
+                    print(f'Converged at iteration {iteration}')
                 converged_iter = iteration
                 break
 
@@ -250,6 +252,16 @@ class LogRegCCD:
                   f"Best {measure}: {scores[best_idx]}\n"
                   f"Best coefficients: {self.best_beta}\n"
                   f"Best intercept: {self.best_intercept}")
+            
+    def validate_all(self, X_valid: pd.DataFrame, y_valid: pd.DataFrame) -> None:
+        """
+        Validate the model using all evaluation measures.
+
+        :param X_valid: Validation feature matrix.
+        :param y_valid: Validation labels.
+        """
+        for measure in LogRegCCD.measures.keys():
+            self.validate(X_valid, y_valid, measure, find_best=False)
 
     def plot_score(self, measure: str, save_path: str = None) -> None:
         """
@@ -280,6 +292,8 @@ class LogRegCCD:
         if save_path:
             plt.savefig(save_path)
 
+
+
     def validate_and_plot_all(self, X_valid: pd.DataFrame, y_valid: pd.DataFrame, save_path: str = None) -> None:
         """
         Validate the model using all evaluation measures and plot the results.
@@ -309,7 +323,7 @@ class LogRegCCD:
         # Show the plot
         plt.show()
 
-        if save_path:
+        if save_path is not None:
             plt.savefig(save_path)
 
     def plot_coeff(self, save_path: str = None) -> None:
