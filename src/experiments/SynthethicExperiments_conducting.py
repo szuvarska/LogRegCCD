@@ -116,15 +116,17 @@ if __name__ == "__main__":
     # d = [1, 2, 8, 16]  # Number of features
     # g = np.arange(-1.0, 1.1, 0.25).tolist()  # Correlation between features
 
-    # p = [0.5]
-    # n = [50]
-    # d = [100, 200, 300, 400, 500]
-    # g = [0, 1]
-
-    p = [0.05, 0.5]
-    n = [1000]
-    d = [32]
+    # High dimensionality
+    p = [0.5]
+    n = [50]
+    d = [100, 200, 300, 400, 500]
     g = [0, 1]
+
+    # Imbalanced classes
+    # p = [0.05, 0.5]
+    # n = [1000]
+    # d = [32]
+    # g = [0, 1]
     
     # Explore the parameter space
     explore_parameters(lambda_vals, p, n, d, g, num_repeats=50, save_plots=False)
